@@ -35,6 +35,7 @@ Both Bees are deterministic: numbers come from DuckDB queries over the CSVs, nev
 | --- | --- | --- | --- |
 | Sales | `backend/agents/sales.py`, `backend/tools/sales_tools.py` | `GET /api/v1/sales/summary` | Revenue and units in the last 7 days vs the previous 7, the product driving the change, products that stopped selling, revenue by channel, top 5 products, and gross margin overall and by category |
 | Inventory | `backend/agents/inventory.py`, `backend/tools/inventory_tools.py` | `GET /api/v1/inventory/status` | Out-of-stock and at-risk products with their stock, unfulfilled demand, lost and projected lost sales, suggested order quantities, FIFO stock value, stock cover for the top 10 sellers, highest-value stock, and the suppliers with the longest lead times |
+| Finance | `backend/agents/finance.py`, `backend/tools/finance_tools.py` | `GET /api/v1/finance/summary` | Overdue invoice count and actual outstanding balance as of the reporting date |
 
 Both endpoints accept `window_days` (1–90, default 7), an optional `as_of` date, an optional natural-language `question`, and `language` (`en` or a `zh` locale). `/api/v1/query` also uses its `language` field for deterministic Chinese routing and localized summaries.
 
@@ -51,6 +52,8 @@ A product is **at risk** when its days of cover (current stock ÷ average daily 
 With the BizzyData fixture, the two Bees reproduce the flagship story: revenue fell 18% (SGD 70,000 → 57,400), and all of the decline comes from Product A (`PRD001`). Product A is out of stock, with 126 units of unfulfilled demand, which equals SGD 12,600 in lost sales.
 
 For cross-functional questions, Queen passes the original question to both Bees. Advisor links a sales decline to a stockout only when the product, reporting period, timeline, and monetary impact align. It reports this as evidence-supported correlation rather than proven causation. Recommended actions now include a reason, structured parameters, and expected impact; a purchase order remains a draft until Guard returns human approval.
+
+For causal questions such as “Why did sales fall this week?”, Queen first runs Sales. If Sales finds that the declining product stopped selling and recommends checking stock availability, Queen automatically adds Inventory and lets Advisor test the stockout explanation.
 
 Product, channel, margin, stock-risk, supplier, valuation and reorder breakdowns are also returned as structured evidence arrays. Advisor uses these records to identify top sellers at stock risk, high-value/low-velocity inventory, and replenishment priorities instead of parsing display strings.
 
@@ -77,6 +80,17 @@ Unit and API tests use the small dataset in `tests/fixtures/demo/`. `tests/test_
 `tests/test_sales_inventory_answers.py` verifies that the 5 Sales, 5 Inventory and 5 Sales+Inventory benchmark questions return the expected question-specific evidence and Advisor synthesis.
 
 `tests/test_health_monitoring.py` verifies dynamic scoring, actionable alert payloads, incomplete-data warnings and both monitoring endpoints.
+
+## Docker
+
+The image is self-contained and does not require a sibling BizzyData checkout:
+
+```bash
+docker build -t bizzybackend .
+docker run --rm -p 8000:8000 bizzybackend
+```
+
+`docker/bizzydata-demo.tar.gz` contains only the CSVs used by the current Bees and is pinned to the source revision recorded in `docker/BIZZY_DATA_REF`. Regenerate this archive when the BizzyData contract changes.
 
 `tests/test_routing_benchmark.py` holds the team's 40 benchmark questions and the Bees Queen should invoke for each. It is opt-in while routing is tuned:
 
