@@ -11,6 +11,16 @@ def test_health_endpoint() -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_api_routes_are_registered_once() -> None:
+    registered = [
+        (route.path, method)
+        for route in app.routes
+        if route.path.startswith("/api/v1")
+        for method in getattr(route, "methods", set())
+    ]
+    assert len(registered) == len(set(registered))
+
+
 def test_inventory_only_query_routes_to_inventory_bee() -> None:
     payload = {"question": "How many Product A units are left?", "language": "en", "user": "owner"}
     response = client.post("/api/v1/query", json=payload)
