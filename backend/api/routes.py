@@ -4,11 +4,14 @@ from uuid import uuid4
 
 from fastapi import APIRouter
 
+from backend.advisor.advisor import advisor_bee
 from backend.audit.store import build_audit_event
 from backend.models.agent import QueryRequest, QueryResponse
-from backend.orchestration.queen import advisor_bee, run_specialists
+from backend.orchestration.queen import run_specialists
 from backend.security.guard import evaluate
+from dotenv import load_dotenv
 
+load_dotenv()  # Loads environment variables from .env file
 router = APIRouter(prefix="/api/v1", tags=["bizzybee"])
 
 
