@@ -1,16 +1,39 @@
 from __future__ import annotations
 
 import csv
-import duckdb
+import os
+from datetime import date
 from pathlib import Path
 
+import duckdb
+from dotenv import load_dotenv
+
+load_dotenv()
+
 ROOT = Path(__file__).resolve().parents[2]
-# Look for full dataset in workspace parent folders or fallback to local backend data
-DATA_DIR = ROOT.parents[1] / "BizzyData.worktrees" / "explanation-request-clarification" / "data" / "demo"
-if not DATA_DIR.exists():
-    DATA_DIR = ROOT.parents[1] / "BizzyData" / "data" / "demo"
-if not DATA_DIR.exists():
-    DATA_DIR = ROOT / "data" / "demo"
+DEFAULT_AS_OF_DATE = "2026-09-23"
+
+
+def _resolve_data_dir() -> Path:
+    configured = os.getenv("BIZZY_DATA_DIR")
+    if configured:
+        return Path(configured).expanduser().resolve()
+
+    # Look for full dataset in workspace parent folders or fallback to local backend data
+    candidates = [
+        ROOT.parents[1] / "BizzyData.worktrees" / "explanation-request-clarification" / "data" / "demo",
+        ROOT.parents[1] / "BizzyData" / "data" / "demo",
+        ROOT.parent / "BizzyData" / "data" / "demo",
+    ]
+    return next((path for path in candidates if path.exists()), ROOT / "data" / "demo")
+
+
+DATA_DIR = _resolve_data_dir()
+
+
+def as_of_date() -> date:
+    """Fixed reporting cutoff for the demo; wall-clock dates would break the frozen scenario numbers."""
+    return date.fromisoformat(os.getenv("BIZZY_AS_OF_DATE", DEFAULT_AS_OF_DATE))
 
 def _read_csv(name: str) -> list[dict[str, str]]:
     file_path = DATA_DIR / name
@@ -60,7 +83,7 @@ def analyze_customer_complaints() -> list[dict]:
         GROUP BY product_id
     ),
     complaint_stats AS (
-        SELECT 
+        SELECT
             f.product_id,
             COUNT(*) AS total_complaints,
             SUM(f.affected_quantity) AS defective_units,
@@ -70,14 +93,14 @@ def analyze_customer_complaints() -> list[dict]:
         GROUP BY f.product_id
     ),
     refund_stats AS (
-        SELECT 
+        SELECT
             r.product_id,
             SUM(ref.amount) AS total_refund_amount_sgd
         FROM returns r
         JOIN refunds ref ON r.return_id = ref.return_id
         GROUP BY r.product_id
     )
-    SELECT 
+    SELECT
         p.product_id,
         p.product AS product_name,
         ps.total_units_sold,
@@ -104,7 +127,7 @@ def analyze_customer_enquiries_sla() -> list[dict]:
     """Analyzes customer support SLA and identifies unanswered high-intent leads."""
     con = get_db()
     query = """
-    SELECT 
+    SELECT
         status,
         COUNT(*) AS total_count,
         COUNT(CASE WHEN intent = 'lead' AND status = 'unanswered' THEN 1 END) AS unanswered_leads,
