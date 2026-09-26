@@ -136,10 +136,11 @@ def localize_response(response: AgentResponse, language: str) -> AgentResponse:
         localized.summary = "客户分析已完成；请查看投诉、退款和未回复高意向咨询等证据。"
     elif response.agent == "finance":
         evidence = _evidence(response)
+        if evidence.get("analysis_intent") != "overdue_receivables":
+            return localized
         localized.summary = (
             f"截至 {evidence.get('as_of_date', '报告日')}，共有 "
             f"{evidence.get('overdue_invoice_count', 0)} 张逾期发票，"
             f"未付余额合计 SGD {evidence.get('overdue_outstanding_sgd', 0):,.2f}。"
         )
     return localized
-
