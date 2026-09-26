@@ -1,5 +1,9 @@
 # BizzyBackend
 
+## POC AWS delivery
+
+See [the authoritative deployment plan](docs/deployment/PLAN.md) for Lambda/Amplify, Cognito login, DynamoDB approvals/audit, Bedrock, CI/CD and approval-gated runbooks. Cloud inference is disabled by default; no third-party model API key is needed. Outside development/test, Cognito and durable audit configuration are mandatory. Existing local uvicorn development remains available.
+
 Minimal BizzyBee backend scaffolding for business-performance monitoring.
 
 ## Structure

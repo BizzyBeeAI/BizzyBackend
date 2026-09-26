@@ -11,6 +11,8 @@ FIXTURE_DATA_DIR = Path(__file__).parent / "fixtures" / "demo"
 # and should never depend on whether a developer has a BizzyData checkout.
 os.environ["BIZZY_DATA_DIR"] = str(FIXTURE_DATA_DIR)
 os.environ["BIZZY_AS_OF_DATE"] = "2026-09-23"
+os.environ["APP_ENV"] = "test"
+os.environ["BIZZY_MODEL_PROVIDER"] = "disabled"
 
 
 @pytest.fixture
