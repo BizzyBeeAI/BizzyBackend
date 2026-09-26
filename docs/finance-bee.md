@@ -1,6 +1,6 @@
 # Finance Bee — scoped implementation
 
-Branch `feat/finance-bee-analysis`. No other Bee implementation, routing, Guard rules, shared response schema, frontend, dataset source or AWS resource was modified. The only shared-file edit is inside localization's Finance-only branch: non-receivables reports and failures retain their truthful English summary rather than being replaced with a misleading zero-overdue Chinese summary.
+The Finance implementation and its reporting integration do not change other Bee implementations, Queen routing, Guard rules, shared agent response schemas, dataset contents or AWS resources. Finance-only localization preserves English summaries for non-receivables reports. Integration adds a dedicated authenticated Finance endpoint and frontend panel.
 
 ## Capabilities
 
@@ -35,14 +35,26 @@ These were recomputed locally and compared to scenario_expectations.csv; they ar
 
 `PYTHONPATH=. BIZZY_FINANCE_DATA_DIR=../BizzyData/data/demo python -m pytest -q tests/test_finance_bee.py tests/test_finance_analysis.py`
 
-Includes balanced-ledger reconciliation, opening entries, refund impact, prior periods, future postings/payments, partial payments, ageing boundaries, invalid records, missing files, margins and Finance-only localization. Full-dataset scenario test is opt-in because the current container omits required finance files. No inference or cloud calls are needed.
+Includes balanced-ledger reconciliation, opening entries, refund impact, prior periods, future postings/payments, partial payments, ageing boundaries, invalid records, missing files, margins and Finance-only localization. The sibling-checkout scenario test remains opt-in. `tests/test_finance_reports.py` exercises the committed archive without sibling checkouts, including full-history reconciliation, validation and authentication. No inference or cloud calls are needed.
 
 ## Explicit integration boundaries
 
-1. Current backend archive contains neither accounts.csv/accounting_ledger.csv nor payments.csv. **Do not deploy this as complete Finance support yet.** A separately approved packaging-only change must add those pinned files and refresh archive checksums. No change to dataset contents is needed. Supplier/expense/opening CSVs already reconcile through ledger postings; their totals must not be added again.
-2. Queen routing was not changed: terms such as profit may be sent to Sales or need Bedrock routing; the direct Finance function supports the new intents. API `/finance/summary` still defaults to overdue receivables because its signature was not changed. Exposing structured dates or improving cross-Bee routing requires separate authorization.
+1. The archive now includes accounts.csv/accounting_ledger.csv/payments.csv from the existing pinned dataset commit. Packaging reads committed Git blobs, not a moving branch or working-tree files. Archive/member checksums are refreshed; existing members remain unchanged. Supplier/expense/opening CSVs already reconcile through ledger postings; their totals must not be added again.
+2. Queen routing was not changed: terms such as profit may be sent to Sales or need Bedrock routing. Use the dedicated Finance panel/API for explicit reporting. API `/finance/summary` retains its signature and overdue summary contract.
 3. Advisor and Guard were not changed. Advanced Finance evidence is available as structured data; no promise that other Bees interpret every new metric. Full new-language summaries are not implemented; the Finance-only localization guard preserves amounts and intent through English fallback.
 4. Monthly expense recognition follows actual posting dates. A month-to-date report can omit expenses recognized at month end; it is not a forecast or accrual estimate beyond the ledger.
 5. Historical recorded supplier payments/refunds are evidence only, never authorization to make payments. No autonomous financial action exists.
 
-Packaging, shared routing/API work and deployment remain separate decisions; this Finance-only change does not authorize them.
+## Reporting integration
+
+`GET /api/v1/finance/report?report_type=profitability&start_date=2026-09-01&as_of_date=2026-09-23`
+
+- Report types: profitability, operating_expenses, cash_flow, receivables. Dates are ISO dates within 2023-01-01 through 2026-09-23. Default reporting date is fixed at 2026-09-23; non-receivables start defaults to that reporting month's first day. Receivables rejects start_date rather than silently ignoring it.
+- Response: report_type, start_date (null for receivables), as_of_date, currency, summary and typed Evidence entries. Source files, metric periods and reconciliation status are carried in evidence. No recommendation execution or approval-state changes occur.
+- Existing Cognito authentication applies through the parent API router. Invalid inputs return 422; unavailable/invalid financial data returns 503 with no fabricated totals. No new permissions or model calls.
+- Frontend Finance panel requests reports only on submission; dates and report type are explicit. Requests use existing bearer-token/30-second timeout handling, cancellation and stale-response protection. Failures clear old figures; undefined margins display Not available. Tables preserve account/customer IDs. Summaries currently remain English.
+- Frontend validation: npm run lint, npm run build, npm run test:finance, npm run test:contract and npm run test:dashboard. Contract snapshot adds only the Finance report model and route.
+- Local packaging: python scripts/package_data.py ../BizzyData followed by python scripts/verify_data.py. BIZZY_DATA_REF is unchanged. Repeating packaging should yield the same archive checksum.
+- Deployment remains separately approved. Release backend/archive first, smoke-test all four authenticated reports, then release frontend. Roll back frontend first and then backend using the existing deployment runbook; no data migration is involved. Before backend rollout, the new frontend panel would receive 404 from older backends; existing views remain usable.
+
+No changes are made to other Bees or their shared routing. The direct report endpoint does not create an application audit event; adding audited read-report requests is a separate Audit integration decision.

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from backend.advisor.advisor import advisor_bee
 from backend.agents.finance import finance_bee
+from backend.api.finance_reports import router as finance_reports_router
 from backend.agents.inventory import inventory_bee
 from backend.agents.sales import sales_bee
 from backend.audit.store import build_audit_event, get_audit_event, save_audit_event, decide_action, DecisionConflict
@@ -25,6 +26,7 @@ from dotenv import load_dotenv
 
 load_dotenv()  # Loads environment variables from .env file
 router = APIRouter(prefix="/api/v1", tags=["bizzybee"], dependencies=[Depends(current_identity)])
+router.include_router(finance_reports_router)
 
 
 def _sales_inventory_health_or_503(as_of: date, window_days: int) -> SalesInventoryHealth:

@@ -8,20 +8,20 @@ import tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FILES = ("sales.csv", "products.csv", "inventory.csv", "inventory_history.csv", "invoices.csv", "customer_feedback.csv", "customer_enquiries.csv", "returns.csv", "refunds.csv", "scenario_expectations.csv")
+FILES = ("sales.csv", "products.csv", "inventory.csv", "inventory_history.csv", "invoices.csv", "customer_feedback.csv", "customer_enquiries.csv", "returns.csv", "refunds.csv", "scenario_expectations.csv", "accounts.csv", "accounting_ledger.csv", "payments.csv")
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("source", type=Path)
     args = parser.parse_args()
-    revision = subprocess.check_output(["git", "-C", str(args.source), "rev-parse", "HEAD"], text=True).strip()
     expected = (ROOT / "docker/BIZZY_DATA_REF").read_text().strip()
+    revision = subprocess.check_output(["git", "-C", str(args.source), "rev-parse", expected.split("@")[-1] + "^{commit}"], text=True).strip()
     if expected != f"BizzyBeeAI/BizzyData@{revision}":
         raise RuntimeError("Source does not match BIZZY_DATA_REF.")
     if subprocess.check_output(["git", "-C", str(args.source), "status", "--porcelain", "--", "data/demo"], text=True):
         raise RuntimeError("Source data has uncommitted changes.")
-    contents = {name: (args.source / "data/demo" / name).read_bytes() for name in sorted(FILES)}
+    contents = {name: subprocess.check_output(["git", "-C", str(args.source), "show", f"{revision}:data/demo/{name}"]) for name in sorted(FILES)}
     archive_path = ROOT / "docker/bizzydata-demo.tar.gz"
     with archive_path.open("wb") as output, gzip.GzipFile(fileobj=output, mode="wb", mtime=0, filename="") as compressed:
         with tarfile.open(fileobj=compressed, mode="w") as archive:
