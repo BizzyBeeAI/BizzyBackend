@@ -45,7 +45,7 @@ class AgentResponse(BaseModel):
 
 
 class QueryRequest(BaseModel):
-    question: str = Field(min_length=1)
+    question: str = Field(min_length=1, max_length=4000)
     language: str = Field(default="en", min_length=2, max_length=16)
     user: str = Field(default="owner")
 

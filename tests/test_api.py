@@ -12,12 +12,21 @@ def test_health_endpoint() -> None:
 
 
 def test_api_routes_are_registered_once() -> None:
+    def leaf_routes(routes):
+        for route in routes:
+            included = getattr(route, "original_router", None)
+            if included is not None:
+                yield from leaf_routes(included.routes)
+            else:
+                yield route
+
     registered = [
         (route.path, method)
-        for route in app.routes
-        if route.path.startswith("/api/v1")
+        for route in leaf_routes(app.routes)
+        if getattr(route, "path", "").startswith("/api/v1")
         for method in getattr(route, "methods", set())
     ]
+    assert registered
     assert len(registered) == len(set(registered))
 
 
