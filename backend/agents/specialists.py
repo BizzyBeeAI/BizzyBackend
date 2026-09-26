@@ -1,27 +1,15 @@
 from __future__ import annotations
 
+from backend.agents.finance import finance_bee
+from backend.agents.inventory import inventory_bee
+from backend.agents.sales import sales_bee
 from backend.models.agent import AgentResponse, AgentStatus, Evidence, RecommendedAction, RiskLevel
 from backend.tools import demo_data
 
-
-def sales_bee() -> AgentResponse:
-    sales = demo_data.load_sales()
-    latest = sales[-1] if sales else {"revenue": "0", "quantity": "0", "product": "n/a"}
-    return AgentResponse(
-        agent="sales",
-        status=AgentStatus.SUCCESS,
-        summary="Sales trend indicates a week-on-week decline.",
-        evidence=[
-            Evidence(metric="latest_revenue", value=float(latest["revenue"])),
-            Evidence(metric="latest_quantity", value=int(latest["quantity"])),
-            Evidence(metric="focus_product", value=latest["product"]),
-        ],
-        confidence=0.86,
-        recommended_actions=[RecommendedAction(type="review_pricing", risk_level=RiskLevel.GREEN)],
-    )
+__all__ = ["customer_bee", "finance_bee", "inventory_bee", "sales_bee"]
 
 
-def customer_bee() -> AgentResponse:
+def customer_bee(question: str | None = None) -> AgentResponse:
     # 1. Execute SQL analytics on CSVs via DuckDB
     complaint_records = demo_data.analyze_customer_complaints()
     enquiry_records = demo_data.analyze_customer_enquiries_sla()
@@ -61,48 +49,5 @@ def customer_bee() -> AgentResponse:
         recommended_actions=[
             RecommendedAction(type="prepare_customer_follow_up", risk_level=RiskLevel.AMBER),
             RecommendedAction(type="review_supplier_quality_defect", risk_level=RiskLevel.AMBER),
-        ],
-    )
-
-
-def finance_bee() -> AgentResponse:
-    invoices = demo_data.load_invoices()
-    overdue = [item for item in invoices if item.get("status", "").lower() == "overdue"]
-    overdue_amount = sum(float(item["amount"]) for item in overdue) if overdue else 0.0
-    return AgentResponse(
-        agent="finance",
-        status=AgentStatus.SUCCESS,
-        summary="Overdue invoices are affecting cash flow.",
-        evidence=[
-            Evidence(metric="overdue_invoice_count", value=len(overdue)),
-            Evidence(metric="overdue_amount_sgd", value=overdue_amount),
-        ],
-        confidence=0.89,
-        recommended_actions=[RecommendedAction(type="prepare_invoice_reminders", risk_level=RiskLevel.AMBER)],
-    )
-
-
-def inventory_bee() -> AgentResponse:
-    rows = demo_data.load_inventory()
-    first = rows[0] if rows else {"current_stock": "0", "reorder_level": "0", "product": "n/a"}
-    current_stock = int(first["current_stock"])
-    reorder_level = int(first["reorder_level"])
-    needs_reorder = current_stock <= reorder_level
-
-    return AgentResponse(
-        agent="inventory",
-        status=AgentStatus.SUCCESS,
-        summary="Inventory is below threshold." if needs_reorder else "Inventory level is healthy.",
-        evidence=[
-            Evidence(metric="product", value=first["product"]),
-            Evidence(metric="current_stock", value=current_stock),
-            Evidence(metric="reorder_level", value=reorder_level),
-        ],
-        confidence=0.91,
-        recommended_actions=[
-            RecommendedAction(
-                type="prepare_purchase_order",
-                risk_level=RiskLevel.AMBER if needs_reorder else RiskLevel.GREEN,
-            )
         ],
     )
