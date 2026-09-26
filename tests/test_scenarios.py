@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from backend.tools.inventory_tools import assess_inventory
+from backend.tools.finance_tools import assess_receivables
 from backend.tools.sales_tools import summarise_sales
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,3 +60,10 @@ def test_lost_stock_sales_explain_the_revenue_decline() -> None:
     assert summary.top_decliner is not None and status.focus is not None
     assert status.focus.product_id == summary.top_decliner.product_id
     assert status.focus.recent_lost_revenue == -summary.top_decliner.revenue_change
+
+
+def test_overdue_receivables_match_frozen_scenario(expected) -> None:
+    summary = assess_receivables(SCENARIO_DATA_DIR, AS_OF)
+
+    assert summary.overdue_invoice_count == int(expected["overdue_invoice_count"]["expected_value"])
+    assert summary.overdue_outstanding == Decimal(expected["overdue_outstanding"]["expected_value"])

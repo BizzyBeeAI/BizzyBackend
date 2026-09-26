@@ -161,4 +161,34 @@ def run_specialists(question: str, language: str = "en") -> tuple[list[str], lis
         agent_fn = AGENT_REGISTRY[name]
         results.append(localize_response(agent_fn(question=question), language))
 
+    causal_sales_terms = (
+        "why",
+        "drop",
+        "decline",
+        "fell",
+        "fall",
+        "下降",
+        "下跌",
+        "减少",
+        "为什么",
+    )
+    sales_result = next((result for result in results if result.agent == "sales"), None)
+    should_check_inventory = (
+        sales_result is not None
+        and "inventory" not in selected_agents
+        and any(term in question.lower() for term in causal_sales_terms)
+        and any(
+            action.type == "investigate_stock_availability"
+            for action in sales_result.recommended_actions
+        )
+    )
+    if should_check_inventory:
+        selected_agents.append("inventory")
+        results.append(
+            localize_response(
+                inventory_bee(question="stock availability related to sales decline"),
+                language,
+            )
+        )
+
     return selected_agents, results

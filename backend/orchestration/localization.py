@@ -15,25 +15,40 @@ def _is_chinese(language: str) -> bool:
 
 def _sales_summary(response: AgentResponse) -> str:
     evidence = _evidence(response)
-    if "top_channel" in evidence:
+    intent = evidence.get("analysis_intent")
+    change = evidence.get("revenue_change_pct")
+    recent = evidence.get("recent_revenue_sgd")
+    if intent in {"overview", "revenue_summary", "decline_analysis"} and isinstance(
+        change, (int, float)
+    ) and isinstance(recent, (int, float)):
+        direction = "下降" if change < 0 else "上升"
+        text = f"本期收入为 SGD {recent:,.2f}，较基准期{direction} {abs(change):.1f}%。"
+        if product_id := evidence.get("focus_product_id"):
+            text += f" 主要影响产品为 {product_id}。"
+        return text
+    if intent == "channel_performance" and "top_channel" in evidence:
         return (
             f"{evidence['top_channel']} 渠道收入最高，为 SGD "
             f"{evidence.get('top_channel_recent_revenue_sgd', 0):,.2f}。"
         )
-    if details := evidence.get("top_product_details"):
+    if intent == "top_products" and (details := evidence.get("top_product_details")):
         top = details[0]
         return (
             f"收入最高的产品是 {top['product']}（{top['product_id']}），"
             f"本期收入 SGD {top['recent_revenue_sgd']:,.2f}。"
         )
-    if details := evidence.get("category_margin_details"):
+    if intent == "category_margin" and (details := evidence.get("category_margin_details")):
         top = details[0]
         return (
             f"整体毛利率为 {evidence.get('recent_gross_margin_pct', 0):.2f}%；"
             f"{top['category']} 品类毛利率最高，为 {top['gross_margin_pct']:.2f}%。"
         )
-    change = evidence.get("revenue_change_pct")
-    recent = evidence.get("recent_revenue_sgd")
+    if intent == "product_velocity" and (details := evidence.get("product_velocity_details")):
+        slowest = details[0]
+        return (
+            f"{slowest['product']}（{slowest['product_id']}）近期销售速度最低，"
+            f"平均每天 {slowest['avg_daily_units']:.2f} 件。"
+        )
     if isinstance(change, (int, float)) and isinstance(recent, (int, float)):
         direction = "下降" if change < 0 else "上升"
         text = f"本期收入为 SGD {recent:,.2f}，较基准期{direction} {abs(change):.1f}%。"
@@ -45,17 +60,31 @@ def _sales_summary(response: AgentResponse) -> str:
 
 def _inventory_summary(response: AgentResponse) -> str:
     evidence = _evidence(response)
-    if "total_stock_value_sgd" in evidence and "product_id" not in evidence:
+    intent = evidence.get("analysis_intent")
+    if intent == "overview":
+        text = (
+            f"当前有 {evidence.get('out_of_stock_product_count', 0)} 个断货商品，"
+            f"{evidence.get('at_risk_product_count', 0)} 个商品存在断货风险。"
+        )
+        if product_id := evidence.get("product_id"):
+            text += f" 首要关注 {product_id}，当前库存 {evidence.get('current_stock', 0)} 件。"
+        return text
+    if intent == "inventory_valuation" and "total_stock_value_sgd" in evidence:
         return f"当前 FIFO 库存总价值为 SGD {evidence['total_stock_value_sgd']:,.2f}。"
-    if details := evidence.get("supplier_lead_time_details"):
+    if intent == "supplier_lead_times" and (details := evidence.get("supplier_lead_time_details")):
         top = details[0]
         return f"{top['supplier']} 的补货交期最长，为 {top['lead_time_days']} 天。"
-    if "top_sellers_at_risk_count" in evidence:
+    if intent == "top_seller_cover" and "top_sellers_at_risk_count" in evidence:
         return f"前十畅销商品中有 {evidence['top_sellers_at_risk_count']} 个存在缺货风险。"
-    if "simulation_days_of_cover_after_receipt" in evidence:
+    if intent == "what_if" and "simulation_days_of_cover_after_receipt" in evidence:
         return (
             f"情景模拟建议数量为 {evidence['simulation_order_qty']} 件，"
             f"到货后预计可覆盖 {evidence['simulation_days_of_cover_after_receipt']} 天需求。"
+        )
+    if intent == "reorder_recommendation" and evidence.get("suggested_order_qty_is_provisional"):
+        return (
+            f"{evidence.get('product_id')} 的暂定追加补货量为 {evidence.get('suggested_order_qty')} 件；"
+            "由于在途数量未知，必须先确认到货数量。"
         )
     if product_id := evidence.get("product_id"):
         risk = {
@@ -106,6 +135,11 @@ def localize_response(response: AgentResponse, language: str) -> AgentResponse:
     elif response.agent == "customer":
         localized.summary = "客户分析已完成；请查看投诉、退款和未回复高意向咨询等证据。"
     elif response.agent == "finance":
-        localized.summary = "财务分析已完成；逾期发票正在影响现金流。"
+        evidence = _evidence(response)
+        localized.summary = (
+            f"截至 {evidence.get('as_of_date', '报告日')}，共有 "
+            f"{evidence.get('overdue_invoice_count', 0)} 张逾期发票，"
+            f"未付余额合计 SGD {evidence.get('overdue_outstanding_sgd', 0):,.2f}。"
+        )
     return localized
 

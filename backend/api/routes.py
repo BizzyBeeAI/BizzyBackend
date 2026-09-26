@@ -8,6 +8,7 @@ import duckdb
 from fastapi import APIRouter, HTTPException, Query
 
 from backend.advisor.advisor import advisor_bee
+from backend.agents.finance import finance_bee
 from backend.agents.inventory import inventory_bee
 from backend.agents.sales import sales_bee
 from backend.audit.store import build_audit_event, get_audit_event, save_audit_event
@@ -69,6 +70,14 @@ def inventory_status(
         inventory_bee(question=question, as_of=as_of, window_days=window_days),
         language,
     )
+
+
+@router.get("/finance/summary", response_model=AgentResponse)
+def finance_summary(
+    language: str = Query(default="en", min_length=2, max_length=16),
+    as_of: Optional[date] = None,
+) -> AgentResponse:
+    return localize_response(finance_bee(as_of=as_of), language)
 
 
 @router.get("/sales-inventory/health", response_model=SalesInventoryHealth)

@@ -28,9 +28,11 @@ def test_cross_functional_query_returns_specialist_contract() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert "sales" in body["invoked_agents"]
+    assert body["invoked_agents"] == ["sales", "inventory"]
     assert "advisor_result" in body
     assert body["advisor_result"]["agent"] == "advisor"
+    advisor_evidence = {item["metric"]: item["value"] for item in body["advisor_result"]["evidence"]}
+    assert advisor_evidence["relationship_assessment"] == "strongly_supported"
 
     specialist = body["specialist_results"][0]
     assert set(specialist).issuperset(

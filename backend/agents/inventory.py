@@ -237,6 +237,7 @@ def _evidence(
 ) -> list[Evidence]:
     period = f"{status.recent_start.isoformat()}/{status.as_of.isoformat()}"
     evidence = [
+        Evidence(metric="analysis_intent", value=intent),
         Evidence(metric="as_of_date", value=status.as_of.isoformat(), source="inventory.csv"),
         Evidence(metric="recent_period", value=period, source="inventory_history.csv"),
     ]

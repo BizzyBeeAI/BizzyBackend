@@ -47,6 +47,27 @@ def test_summary_endpoints_accept_question_specific_analysis() -> None:
     assert evidence_map(inventory_response.json())["simulation_demand_uplift_pct"] == 20.0
 
 
+def test_chinese_overview_summaries_prioritise_revenue_and_stock_risk() -> None:
+    sales_response = client.get("/api/v1/sales/summary", params={"language": "zh-CN"})
+    inventory_response = client.get("/api/v1/inventory/status", params={"language": "zh-CN"})
+
+    assert "下降 25.0%" in sales_response.json()["summary"]
+    assert "渠道收入最高" not in sales_response.json()["summary"]
+    assert "1 个断货商品" in inventory_response.json()["summary"]
+    assert "交期最长" not in inventory_response.json()["summary"]
+
+
+def test_finance_summary_endpoint_returns_live_overdue_receivables() -> None:
+    response = client.get("/api/v1/finance/summary", params={"language": "zh-CN"})
+
+    assert response.status_code == 200
+    body = response.json()
+    evidence = evidence_map(body)
+    assert evidence["overdue_invoice_count"] == 2
+    assert evidence["overdue_outstanding_sgd"] == 280.0
+    assert "2 张逾期发票" in body["summary"]
+
+
 def test_inventory_status_endpoint_returns_agent_contract() -> None:
     response = client.get("/api/v1/inventory/status")
 

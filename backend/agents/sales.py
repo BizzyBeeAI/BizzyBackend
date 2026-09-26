@@ -126,6 +126,7 @@ def _describe(summary: SalesSummary, window_days: int, intent: str) -> str:
 
 def _evidence(summary: SalesSummary, intent: str) -> list[Evidence]:
     evidence = [
+        Evidence(metric="analysis_intent", value=intent),
         Evidence(metric="baseline_period", value=summary.baseline.label, source="sales.csv"),
         Evidence(metric="recent_period", value=summary.recent.label, source="sales.csv"),
     ]

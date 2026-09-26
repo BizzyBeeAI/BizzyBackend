@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from backend.agents.finance import finance_bee
 from backend.agents.inventory import inventory_bee
 from backend.agents.sales import sales_bee
 from backend.models.agent import AgentResponse, AgentStatus, Evidence, RecommendedAction, RiskLevel
@@ -49,21 +50,4 @@ def customer_bee(question: str | None = None) -> AgentResponse:
             RecommendedAction(type="prepare_customer_follow_up", risk_level=RiskLevel.AMBER),
             RecommendedAction(type="review_supplier_quality_defect", risk_level=RiskLevel.AMBER),
         ],
-    )
-
-
-def finance_bee(question: str | None = None) -> AgentResponse:
-    invoices = demo_data.load_invoices()
-    overdue = [item for item in invoices if item.get("status", "").lower() == "overdue"]
-    overdue_amount = sum(float(item["amount"]) for item in overdue) if overdue else 0.0
-    return AgentResponse(
-        agent="finance",
-        status=AgentStatus.SUCCESS,
-        summary="Overdue invoices are affecting cash flow.",
-        evidence=[
-            Evidence(metric="overdue_invoice_count", value=len(overdue)),
-            Evidence(metric="overdue_amount_sgd", value=overdue_amount),
-        ],
-        confidence=0.89,
-        recommended_actions=[RecommendedAction(type="prepare_invoice_reminders", risk_level=RiskLevel.AMBER)],
     )
