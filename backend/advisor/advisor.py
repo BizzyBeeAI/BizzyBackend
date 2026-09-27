@@ -209,8 +209,135 @@ def _replenishment_support(
     return summary, evidence, action
 
 
+def _legacy_evidence_guidance(question: str, results: list[AgentResponse]) -> AgentResponse | None:
+    """Support older metric-level evidence without changing modern cross-agent analysis."""
+    legacy_metrics = {
+        "latest_revenue", "current_stock", "reorder_level",
+        "complaint_rate_pct", "unanswered_leads", "overdue_invoice_count",
+        "overdue_amount_sgd", "revenue_change_pct",
+    }
+    modern_metrics = {
+        "focus_product_id", "focus_product_revenue_change_sgd",
+        "top_product_details", "baseline_top_product_details",
+        "product_velocity_details", "product_performance_details",
+        "reorder_recommendation_details", "inventory_value_details",
+        "top_seller_stock_details", "stock_risk_details",
+    }
+    observed = {item.metric for result in results for item in result.evidence}
+    # The full specialists also emit generic metrics such as current_stock.
+    # Never let the older metric-based rules override their richer analysis.
+    if observed & modern_metrics or not observed & legacy_metrics:
+        return None
+
+    usable = [result for result in results if result.status != AgentStatus.FAILED]
+    if not usable:
+        return AgentResponse(
+            agent="advisor", status=AgentStatus.PARTIAL,
+            summary="No usable specialist results were available.",
+            evidence=[], confidence=0.0, recommended_actions=[],
+        )
+
+    # Conflicting measurements must not be silently collapsed into a dict.
+    for result in usable:
+        changes = [
+            float(item.value) for item in result.evidence
+            if result.agent == "sales" and item.metric == "revenue_change_pct"
+            and isinstance(item.value, (int, float))
+        ]
+        if any(change < 0 for change in changes) and any(change > 0 for change in changes):
+            return AgentResponse(
+                agent="advisor", status=AgentStatus.PARTIAL,
+                summary="Sales direction is conflicting; withhold recommendations pending verification.",
+                evidence=[item for r in usable for item in r.evidence],
+                confidence=min(r.confidence for r in usable),
+                recommended_actions=[],
+            )
+
+    by_agent = {result.agent: _evidence_map(result) for result in usable}
+    actions: list[RecommendedAction] = []
+    findings: list[str] = []
+    sales = by_agent.get("sales", {})
+    inventory = by_agent.get("inventory", {})
+    customer = by_agent.get("customer", {})
+    finance = by_agent.get("finance", {})
+
+    def add(action: str, agent: str, metric: str, reason: str) -> None:
+        actions.append(RecommendedAction(
+            type=f"{action}__{agent}.{metric}", risk_level=RiskLevel.GREEN,
+            reason=reason,
+        ))
+
+    # Revenue alone does not establish a decline; recommend reviewing the
+    # sales specialist's reported decline rather than asserting causation.
+    sales_result = next((r for r in usable if r.agent == "sales"), None)
+    if sales_result and (
+        (isinstance(sales.get("revenue_change_pct"), (int, float))
+         and sales["revenue_change_pct"] < 0)
+        or ("declin" in sales_result.summary.lower() or "fell" in sales_result.summary.lower())
+    ):
+        metric = "revenue_change_pct" if "revenue_change_pct" in sales else "latest_revenue"
+        if metric in sales:
+            add("review_sales_decline", "sales", metric,
+                "Review the reported decline against verified sales evidence.")
+            findings.append("Sales reported a decline")
+
+    stock = inventory.get("current_stock")
+    reorder = inventory.get("reorder_level")
+    if isinstance(stock, (int, float)) and isinstance(reorder, (int, float)) and stock < reorder:
+        add("review_inventory_shortage", "inventory", "current_stock",
+            "Stock is below the recorded reorder level.")
+        findings.append("Inventory is below its reorder level")
+
+    if isinstance(customer.get("complaint_rate_pct"), (int, float)) and customer["complaint_rate_pct"] > 0:
+        add("review_customer_complaints", "customer", "complaint_rate_pct",
+            "Review reported complaints before drawing conclusions.")
+        findings.append("Customer complaints warrant review")
+    if isinstance(customer.get("unanswered_leads"), (int, float)) and customer["unanswered_leads"] > 0:
+        add("review_pending_enquiries", "customer", "unanswered_leads",
+            "Review outstanding customer enquiries.")
+        findings.append("Pending enquiries warrant review")
+
+    if (
+        isinstance(finance.get("overdue_amount_sgd"), (int, float))
+        and finance["overdue_amount_sgd"] > 0
+        and isinstance(finance.get("overdue_invoice_count"), (int, float))
+        and finance["overdue_invoice_count"] > 0
+    ):
+        add("review_financial_exposure", "finance", "overdue_amount_sgd",
+            "Overdue invoice count and amount both support a review.")
+        findings.append("Overdue invoices warrant review")
+
+    status = (AgentStatus.PARTIAL if any(r.status != AgentStatus.SUCCESS for r in results)
+              else AgentStatus.SUCCESS)
+    if not findings:
+        summary = "No significant problems identified from the supplied evidence."
+    else:
+        summary = "; ".join(findings) + ". These findings may be related but the available evidence does not establish causation."
+    return AgentResponse(
+        agent="advisor", status=status, summary=summary,
+        evidence=[item for r in usable for item in r.evidence],
+        confidence=min(r.confidence for r in usable),
+        recommended_actions=actions,
+    )
+
+
 def advisor_bee(question: str, specialist_results: list[AgentResponse]) -> AgentResponse:
     """Synthesizes outputs from all executed specialists into prioritized guidance."""
+    if not specialist_results:
+        return AgentResponse(
+            agent="advisor", status=AgentStatus.PARTIAL,
+            summary="No usable specialist results were available.",
+            evidence=[], confidence=0.0, recommended_actions=[],
+        )
+    legacy = _legacy_evidence_guidance(question, specialist_results)
+    if legacy is not None:
+        return legacy
+    if all(result.status == AgentStatus.FAILED for result in specialist_results):
+        return AgentResponse(
+            agent="advisor", status=AgentStatus.PARTIAL,
+            summary="No usable specialist results were available.",
+            evidence=[], confidence=0.0, recommended_actions=[],
+        )
     results_by_agent = {result.agent: result for result in specialist_results}
     sales = results_by_agent.get("sales")
     inventory = results_by_agent.get("inventory")
@@ -290,11 +417,5 @@ def advisor_bee(question: str, specialist_results: list[AgentResponse]) -> Agent
         summary=summary_text,
         evidence=evidence,
         confidence=min((result.confidence for result in specialist_results), default=0.0),
-        recommended_actions=[
-            RecommendedAction(
-                type="review_advisor_summary",
-                risk_level=RiskLevel.GREEN,
-                reason="No additional cross-specialist action was inferred beyond the specialist recommendations.",
-            )
-        ],
+        recommended_actions=[],
     )
