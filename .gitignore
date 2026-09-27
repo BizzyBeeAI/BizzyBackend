@@ -2,3 +2,7 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
+data/audit.sqlite3
+.env
+.env.*
+!.env.example
