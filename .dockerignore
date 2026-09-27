@@ -1,0 +1,7 @@
+**
+!requirements.txt
+!backend/
+!backend/**
+!docker/
+!docker/bizzydata-demo.tar.gz
+!docker/data-manifest.json

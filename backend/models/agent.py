@@ -21,11 +21,18 @@ class RiskLevel(str, Enum):
 class Evidence(BaseModel):
     metric: str
     value: Any
+    unit: str | None = None
+    period: str | None = None
+    source: str | None = None
+    dimensions: dict[str, str] = Field(default_factory=dict)
 
 
 class RecommendedAction(BaseModel):
     type: str
     risk_level: RiskLevel = RiskLevel.GREEN
+    reason: str | None = None
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    expected_impact: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentResponse(BaseModel):
@@ -38,7 +45,7 @@ class AgentResponse(BaseModel):
 
 
 class QueryRequest(BaseModel):
-    question: str = Field(min_length=1)
+    question: str = Field(min_length=1, max_length=4000)
     language: str = Field(default="en", min_length=2, max_length=16)
     user: str = Field(default="owner")
 

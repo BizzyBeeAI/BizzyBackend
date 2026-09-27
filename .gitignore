@@ -2,7 +2,15 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
-data/audit.sqlite3
+.DS_Store
 .env
 .env.*
 !.env.example
+.terraform/
+*.tfstate*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+backend.hcl
+data/audit/
+data/audit.sqlite3

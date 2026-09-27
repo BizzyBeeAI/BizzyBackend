@@ -1,121 +1,64 @@
 from __future__ import annotations
 
-import re
-
 from backend.models.agent import AgentResponse
 
 
-_READ_ONLY_ACTIONS = {
-    "analyze_customer",
-    "analyze_finance",
-    "analyze_inventory",
-    "analyze_sales",
-    "get_business_health",
-    "read_business_analytics",
-    "review_customer_complaints",
-    "review_financial_exposure",
-    "review_inventory_shortage",
-    "review_payment_history",
-    "review_pending_enquiries",
-    "review_pricing",
-    "review_sales_decline",
-    "review_supplier_quality_defect",
+READ_ONLY_TYPES = {
+    "monitor_sales_trend", "monitor_stock_levels", "review_sales_analysis",
+    "investigate_stock_availability", "review_product_performance", "review_inventory_analysis",
+    "prioritise_top_seller_replenishment", "review_slow_moving_inventory",
+    "prioritise_revenue_recovery", "review_advisor_summary",
+}
+APPROVAL_TYPES = {
+    "prepare_purchase_order", "verify_inbound_quantity", "review_purchase_order_bundle",
+    "prepare_customer_follow_up", "review_supplier_quality_defect", "prepare_invoice_reminders",
 }
 
-_AMBER_ACTIONS = {
-    "prepare_customer_follow_up",
-    "prepare_invoice_reminders",
-    "prepare_purchase_order",
-    "send_customer_follow_up",
-    "send_customer_message",
-    "send_invoice_reminder",
-    "send_message_to_customer",
-    "submit_purchase_order",
-}
 
-_RED_VERBS = {"delete", "erase", "remove"}
-_FINANCIAL_RECORDS = {
-    "bank",
-    "finance",
-    "financial",
-    "invoice",
-    "payment",
-    "record",
-    "records",
-    "transaction",
-}
-_BANK_DETAIL_MUTATIONS = {"alter", "change", "edit", "modify", "replace", "set", "update"}
-_EXTERNAL_PARTIES = {"client", "customer", "external", "supplier", "vendor"}
-_COMMUNICATION_VERBS = {
-    "communicate",
-    "contact",
-    "email",
-    "message",
-    "notify",
-    "reply",
-    "respond",
-    "send",
-}
-_COMMUNICATION_NOUNS = {"communication", "email", "message", "notification", "response"}
+def action_decision(action) -> str:
+    if action.risk_level.value == "RED" or action.type not in READ_ONLY_TYPES | APPROVAL_TYPES:
+        return "blocked"
+    if _invalid_controlled_action(action.type, action.parameters):
+        return "blocked"
+    if action.type in APPROVAL_TYPES or action.risk_level.value == "AMBER":
+        return "approval_required"
+    return "allowed"
 
 
-def _action_key(action_type: str) -> str:
-    action_name = action_type.split("[evidence:", maxsplit=1)[0].strip().lower()
-    return re.sub(r"[^a-z0-9]+", "_", action_name).strip("_")
+def _positive_integer(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
-def _classify(action_type: str) -> tuple[str, str]:
-    action = _action_key(action_type)
-    if action in _READ_ONLY_ACTIONS:
-        return "GREEN", "allowlisted read-only business analytics."
-
-    tokens = set(action.split("_"))
-    is_bank_detail_change = "bank" in tokens and bool(
-        tokens.intersection({"account", "detail", "details"})
-        and tokens.intersection(_BANK_DETAIL_MUTATIONS)
-    )
-    is_financial_deletion = bool(tokens.intersection(_RED_VERBS)) and bool(
-        tokens.intersection(_FINANCIAL_RECORDS)
-    )
-    if (
-        tokens.intersection({"pay", "payment", "payments"})
-        or "transfer" in tokens
-        or is_bank_detail_change
-        or is_financial_deletion
-    ):
-        return "RED", "autonomous financial or bank-data action is prohibited."
-
-    is_external_communication = bool(tokens.intersection(_COMMUNICATION_VERBS)) and bool(
-        tokens.intersection(_EXTERNAL_PARTIES)
-        or tokens.intersection(_COMMUNICATION_NOUNS)
-    )
-    if (
-        action in _AMBER_ACTIONS
-        or "purchase_order" in action
-        or is_external_communication
-        or "external_commitment" in action
-        or "commit_to_supplier" in action
-        or ("commitment" in tokens and bool(tokens.intersection(_EXTERNAL_PARTIES)))
-    ):
-        return "AMBER", "explicit human approval is required before external communication or commitment."
-
-    return "DENY", "unknown action is denied by default."
+def _invalid_controlled_action(action_type: str, parameters: dict[str, object]) -> bool:
+    if action_type == "prepare_purchase_order":
+        return not (
+            parameters.get("product_id")
+            and parameters.get("supplier_id")
+            and _positive_integer(parameters.get("quantity"))
+        )
+    if action_type == "verify_inbound_quantity":
+        return not (
+            parameters.get("product_id")
+            and parameters.get("supplier_id")
+            and parameters.get("existing_receipt_date")
+            and _positive_integer(parameters.get("provisional_additional_order_qty"))
+        )
+    if action_type == "review_purchase_order_bundle":
+        product_ids = parameters.get("product_ids")
+        return not (
+            isinstance(product_ids, list)
+            and product_ids
+            and all(isinstance(product_id, str) and product_id for product_id in product_ids)
+            and _positive_integer(parameters.get("total_suggested_units"))
+        )
+    return False
 
 
 def evaluate(actions_from_agents: list[AgentResponse]) -> tuple[str, bool]:
-    """Classify proposed actions without executing them or trusting agent risk labels."""
-    classified = [
-        (_action_key(action.type), *_classify(action.type))
-        for response in actions_from_agents
-        for action in response.recommended_actions
-    ]
-
-    if not classified:
-        return "allowed: no actions were proposed.", False
-
-    details = [f"{action}: {risk} - {reason}" for action, risk, reason in classified]
-    if any(risk in {"RED", "DENY"} for _, risk, _ in classified):
-        return f"blocked: {'; '.join(details)}", False
-    if any(risk == "AMBER" for _, risk, _ in classified):
-        return f"approval_required: {'; '.join(details)}", True
-    return f"allowed: {'; '.join(details)}", False
+    all_actions = [action for response in actions_from_agents for action in response.recommended_actions]
+    decisions = [action_decision(action) for action in all_actions]
+    if "blocked" in decisions:
+        return "blocked", True
+    if "approval_required" in decisions:
+        return "approval_required", True
+    return "allowed", False
